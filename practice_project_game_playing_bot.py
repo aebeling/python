@@ -1,4 +1,4 @@
-# practice_project_game_playing_bot_tutorial.py - Program automatically plays Sushi
+# practice_project_game_playing_bot.py - Program automatically plays Sushi
 # Go Round game online one game at a time. Some manual adjustments to the code are
 # still required, for example when the "game day" changes.
 
@@ -11,14 +11,20 @@
 # NOTES: The positions of buttons have been defined so that page cookies have been accepted
 # and then nothing has been moved on the screen.
 # Tested with screen resolution 1920 x 1080 and Firefox browser.
-#
-# The game time seems to be
+
+# NOTES related to the game:
+# The game times
 # Day 1: 3 min
 # Day 2: 4 min
 # Day 3: 5 min
 # Day 4: 6 min
+# Day 5: 6 min
 # Day ...
-# TODO: Add some image recognitition to recognize the Day 1, 2, ..., or manual counter
+#
+# Maximum inventories
+# Rice, nori, roe 15 items
+# Unagi, shrimp, salmon 8 items
+# TODO: Add some image recognitition to recognize the Day 1, 2, ..., or counter
 
 # Usage in Linux:   python3 [program name].py
 
@@ -31,13 +37,14 @@ game_time = {
         1: 180,
         2: 240,
         3: 300,
-        4: 360
+        4: 360,
+        5: 360 
         }
 
-day_number = 4
+day_number = 3
 
 
-# Food items with the starting amounts
+# Food items in the beginning of each round
 food_items = {
         "shrimp": 5,
         "rice" : 10,
@@ -47,11 +54,40 @@ food_items = {
         "unagi" : 5
         }
 
+# Food items with time data of making, added as tuples
+cook_time = []
 
+# Belt speed and cash in constants
+BELT_CONSTANTS = {
+        "speed" : 0.02692998205,    # unit seconds/pixel, about 15 seconds / 557 pixels
+        "setup_time" : 9    # 5 s (time of eating) + 4 s (until beginning of conveyor belt)
+        }
 
-# pg.PAUSE = 1    # Seems to work well with this, but slow
-# pg.PAUSE = 0.75
-# pg.PAUSE = 0.5    # Seems to make mistakes in some parts
+sushi_prices = {
+        "dragon_roll" : 380,
+        "unagi_roll" : 320,
+        "shrimp_sushi" : 320,
+        "salmon_roll" : 280,
+        "gunkan_maki" : 120,
+        "california_roll" : 80,
+        "onigiri" : 60
+        }
+
+ingredient_prices = {
+        "rice" : 100,
+        "unagi" : 350,
+        "salmon" : 300,
+        "shrimp" : 350,
+        "nori" : 100,
+        "roe" : 200,    # aka fish egg
+        }
+
+money = 0
+
+pauses = {
+        "short": 0.2,
+        "long": 0.5
+        }
 
 
 class Coor:
@@ -98,6 +134,9 @@ class Coor:
 
     free_delivery = (911, 820)
     express_delivery = (999, 826)
+
+    # Conveyor belt beginning left edge
+    belt_left_edge = (422, 786)
 
     # Plate coordinates
     p_1 = (500, 733)
@@ -152,7 +191,7 @@ def use_unagi():
 
 def roll():
     pg.click(Coor.roll)
-    time.sleep(0.5)
+    time.sleep(0.8)
 
 
 # Prepare different sushis
@@ -202,10 +241,35 @@ def make_unagi_roll():
             use_unagi()
         roll()
 
+def make_dragon_roll():
+    if food_items["rice"] >= 2 and food_items["nori"] >= 1 and food_items["roe"] \
+            and food_items["unagi"] >= 2:
+                for _ in range(2):
+                    use_rice()
+                    use_unagi()
+                use_nori()
+                use_roe()
+                roll()
 
-def remove_empty_plates():
-    for i in range(1, 7):
-        pg.click(eval("Coor.p_" + str(i)))
+
+def remove_empty_plates(time_elapsed):
+    if time_elapsed > 30:
+        for i in range(1, 7):
+            pg.click(eval("Coor.p_" + str(i)))
+
+
+def count_money(time_elapsed):
+    global money
+    # Reverse iteration to avoid skipping items when deleting
+    for i in range(len(cook_time) - 1, -1, -1):
+        food = cook_time[i][0]
+        time = cook_time[i][1]
+        position = cook_time[i][2]
+        if (time_elapsed - time) > (
+                (position - Coor.belt_left_edge[0]) * BELT_CONSTANTS["speed"]
+                + BELT_CONSTANTS["setup_time"]):
+            money += sushi_prices[food]
+            del cook_time[i]
 
 
 # Functions to buy food items
@@ -253,73 +317,101 @@ def buy_unagi():
 
 
 def buy_items(time_elapsed):
-    if time_elapsed < 60:
-        if food_items["rice"] <= 5:
+    global money
+    if time_elapsed < game_time[day_number]:
+        if food_items["rice"] <= 5 and money >= ingredient_prices["rice"]:
             buy_rice()
-        if food_items["salmon"] <= 3:
-            buy_salmon()
-        elif food_items["shrimp"] <= 3:
-            buy_shrimp()
-        elif food_items["unagi"] <= 3:
+            money -= ingredient_prices["rice"]
+        if food_items["unagi"] <= 3 and money >= ingredient_prices["unagi"]:
             buy_unagi()
-        if food_items["roe"] <= 5:
-            buy_roe()
-        if food_items["nori"] <= 5:
-            buy_nori()
-    else:
-        if food_items["rice"] <= 5:
-            buy_rice()
-        if food_items["salmon"] <= 3:
-            buy_salmon()
-        if food_items["shrimp"] <= 3:
+            money -= ingredient_prices["unagi"]
+        if food_items["shrimp"] <= 3 and money >= ingredient_prices["shrimp"]:
             buy_shrimp()
-        if food_items["unagi"] <= 3:
-            buy_unagi()
-        if food_items["roe"] <= 5:
+            money -= ingredient_prices["shrimp"]
+        if food_items["salmon"] <= 3 and money >= ingredient_prices["salmon"]:
+            buy_salmon()
+            money -= ingredient_prices["salmon"]
+        if food_items["roe"] <= 5 and money >= ingredient_prices["roe"]:
             buy_roe()
-        if food_items["nori"] <= 5:
+            money -= ingredient_prices["roe"]
+        if food_items["nori"] <= 5 and money >= ingredient_prices["nori"]:
             buy_nori()
-    time.sleep(1.5)
+            money -= ingredient_prices["nori"]
+        time.sleep(2.0)
 
 
 def main():
-    pg.PAUSE = 0.2
-    # pg.PAUSE = 3.0    # for slowing up clicking to read the text when 
-    start_play()    # for first game
-    # continue_play()   # for continuing game
+    pg.PAUSE = pauses["short"]
+    # pg.PAUSE = 3.0
+    start_play()    # when starting each day the first time
+    # continue_play()   # when trying the same day again as before
     start_time = time.time()
-    # After game time no new customers arrive
-    while (time.time() - start_time) < (game_time[day_number] + 60):     
-        pg.PAUSE = 0.6
-        if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["unagi"] >= 2:
-            for _ in list(pg.locateAllOnScreen('sushi_options/unagi_roll.png')):
-                make_unagi_roll()            
-        if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["shrimp"] >= 2:
-            for _ in list(pg.locateAllOnScreen('sushi_options/shrimp_sushi.png')):
+    time.sleep(15)  # Wait a moment for seats to fill
+
+    while (time.time() - start_time) < (game_time[day_number] + 45):
+        pg.PAUSE = pauses["short"]
+
+        if food_items["rice"] >= 2 and food_items["nori"] >= 1 and food_items["roe"] >=1 \
+                and food_items["unagi"] >= 2 and day_number >= 5:
+            for customer_position in list(pg.locateAllOnScreen('sushi_options/dragon_roll.png')):
+                make_dragon_roll()
+                cook_time.append(("dragon_roll", time.time() - start_time,
+                    pg.center(customer_position)[0]))
+
+        if day_number >= 5:
+            # pg.PAUSE = pauses["short"]
+            remove_empty_plates(time.time() - start_time)
+
+        if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["unagi"] >= 2 \
+                and day_number >= 4:
+            for customer_position in list(pg.locateAllOnScreen('sushi_options/unagi_roll.png')):
+                make_unagi_roll()
+                cook_time.append(("unagi_roll", time.time() - start_time,
+                    pg.center(customer_position)[0]))
+        if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["shrimp"] >= 2 \
+                and day_number >= 3:
+            for customer_position in list(pg.locateAllOnScreen('sushi_options/shrimp_sushi.png')):
                 make_shrimp_sushi()
-        pg.PAUSE = 0.2
-        remove_empty_plates()
-        pg.PAUSE = 0.6
-        if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["salmon"] >= 2:
-            for _ in list(pg.locateAllOnScreen('sushi_options/salmon_roll.png')):
+                cook_time.append(("shrimp_sushi", time.time() - start_time,
+                    pg.center(customer_position)[0]))
+
+        if day_number >= 3:
+            # pg.PAUSE = pauses["short"]
+            remove_empty_plates(time.time() - start_time)
+
+        # pg.PAUSE = pauses["long"]
+        if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["salmon"] >= 2 \
+                and day_number >= 2:
+            for customer_position in list(pg.locateAllOnScreen('sushi_options/salmon_roll.png')):
                 make_salmon_roll()
+                cook_time.append(("salmon_roll", time.time() - start_time,
+                    pg.center(customer_position)[0]))
         if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["roe"] >= 2:
-            for _ in list(pg.locateAllOnScreen('sushi_options/gunkan_maki.png')):
+            for customer_position in list(pg.locateAllOnScreen('sushi_options/gunkan_maki.png')):
                 make_gunkan_maki()
-        pg.PAUSE = 0.2
-        remove_empty_plates()
-        pg.PAUSE = 0.6
+                cook_time.append(("gunkan_maki", time.time() - start_time,
+                    pg.center(customer_position)[0]))
+
+        # pg.PAUSE = pauses["short"]
+        remove_empty_plates(time.time() - start_time)
+
+        # pg.PAUSE = pauses["long"]
         if food_items["rice"] >= 1 and food_items["nori"] >= 1 and food_items["roe"] >= 1:
-            for _ in list(pg.locateAllOnScreen('sushi_options/california_roll.png')):
+            for customer_position in list(
+                    pg.locateAllOnScreen('sushi_options/california_roll.png')):
                 make_california_roll()
+                cook_time.append(("california_roll", time.time() - start_time,
+                    pg.center(customer_position)[0]))
         if food_items["rice"] >= 2 and food_items["nori"] >= 1:
-            for _ in list(pg.locateAllOnScreen('sushi_options/onigiri.png')):
+            for customer_position in list(pg.locateAllOnScreen('sushi_options/onigiri.png')):
                 make_onigiri()
-        pg.PAUSE = 0.2
-        remove_empty_plates()
-        if 40 <= (time.time() - start_time) <= game_time[day_number]:
-            buy_items(time.time() - start_time)
-            remove_empty_plates()
+                cook_time.append(("onigiri", time.time() - start_time,
+                    pg.center(customer_position)[0]))
+
+        # pg.PAUSE = pauses["short"]
+        count_money(time.time() - start_time)
+        buy_items(time.time() - start_time)
+        remove_empty_plates(time.time() - start_time)
 
 
 if __name__ == "__main__":
